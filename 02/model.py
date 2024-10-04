@@ -34,7 +34,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(50, input_dim=9, activation='relu'),
     tf.keras.layers.Dense(100, activation='relu'),
     tf.keras.layers.Dense(50, activation='relu'),
-    tf.keras.layers.Dense(1)  # Output layer
+    tf.keras.layers.Dense(1) 
 ])
 
 # Compile the model
