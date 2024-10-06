@@ -4,6 +4,9 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from datetime import datetime
 
+# Disable eager execution to use graph-based computation (needed for TensorBoard graph visualization)
+tf.compat.v1.disable_eager_execution()
+
 # Turn off TensorFlow warning messages in program output
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -29,46 +32,56 @@ Y_scaler = MinMaxScaler(feature_range=(0, 1))
 X_scaled_training = X_scaler.fit_transform(X_training)
 Y_scaled_training = Y_scaler.fit_transform(Y_training)
 
-# It's very important that the training and test data are scaled with the same scaler.
+# Scale the test data with the same scaler
 X_scaled_testing = X_scaler.transform(X_testing)
 Y_scaled_testing = Y_scaler.transform(Y_testing)
 
-# Define the model using Keras API
+# Define the model using the Keras Sequential API
 model = tf.keras.Sequential([
-    tf.keras.layers.Dense(50, input_dim=9, activation='relu'),
-    tf.keras.layers.Dense(100, activation='relu'),
-    tf.keras.layers.Dense(50, activation='relu'),
-    tf.keras.layers.Dense(1)  # output layer
+    tf.keras.layers.Dense(50, input_dim=9, activation='relu', name='layer1'),
+    tf.keras.layers.Dense(100, activation='relu', name='layer2'),
+    tf.keras.layers.Dense(50, activation='relu', name='layer3'),
+    tf.keras.layers.Dense(1, name='output')  # output layer
 ])
 
-# Compile the model with Adam optimizer and MSE loss
+# Compile the model with Adam optimizer and Mean Squared Error (MSE) loss
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
               loss='mean_squared_error')
 
-# Create TensorBoard callback to log training and testing data
+# Set up log directory for TensorBoard
 log_dir = os.path.join("logs", datetime.now().strftime("%Y%m%d-%H%M%S"))
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-# Custom callback to log test data
+# Create TensorBoard callback
+tensorboard_callback = tf.keras.callbacks.TensorBoard(
+    log_dir=log_dir, 
+    histogram_freq=1,  # Log weight histograms every epoch
+    write_graph=True,  # Visualize the computational graph
+    write_images=True,  # Log model weights as images
+    update_freq='batch'  # Log after every batch
+)
+
+# Custom callback to log testing data separately
 class TestCallback(tf.keras.callbacks.Callback):
-    def __init__(self, test_data, log_dir):
+    def __init__(self, test_data):
         super(TestCallback, self).__init__()
         self.test_data = test_data
         self.test_writer = tf.summary.create_file_writer(os.path.join(log_dir, "test"))
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch):
         test_loss = self.model.evaluate(self.test_data[0], self.test_data[1], verbose=0)
         with self.test_writer.as_default():
-            tf.summary.scalar('loss', test_loss, step=epoch)
+            tf.summary.scalar('test_loss', test_loss, step=epoch)
 
-# Train the model and log training/testing data
-test_callback = TestCallback(test_data=(X_scaled_testing, Y_scaled_testing), log_dir=log_dir)
-history = model.fit(X_scaled_training, Y_scaled_training, 
-                    epochs=100, 
-                    callbacks=[tensorboard_callback, test_callback],
-                    verbose=2)
+# Train the model and log both training and testing data
+test_callback = TestCallback(test_data=(X_scaled_testing, Y_scaled_testing))
+history = model.fit(
+    X_scaled_training, Y_scaled_training, 
+    epochs=100, 
+    callbacks=[tensorboard_callback, test_callback],
+    verbose=2
+)
 
-# Final evaluation of the model
+# Final evaluation of the model on both training and testing sets
 final_training_loss = model.evaluate(X_scaled_training, Y_scaled_training, verbose=0)
 final_testing_loss = model.evaluate(X_scaled_testing, Y_scaled_testing, verbose=0)
 
@@ -85,4 +98,3 @@ predicted_earnings = Y_predicted[0][0]
 
 print(f"The actual earnings of Game #1 were ${real_earnings}")
 print(f"Our neural network predicted earnings of ${predicted_earnings}")
-
